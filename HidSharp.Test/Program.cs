@@ -24,6 +24,7 @@
 
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -36,6 +37,10 @@ namespace HidSharp.Test
 {
     class Program
     {
+        const int OPEN_TIME = 3 * 60 * 60 * 1000;
+        static DateTime _lastAileronChange = DateTime.MinValue;
+        static DateTime _lastHeartbeat = DateTime.Now;
+
         static void WriteDeviceItemInputParserResult(Reports.Input.DeviceItemInputParser parser)
         {
 #if SHOW_CHANGES_ONLY
@@ -45,8 +50,38 @@ namespace HidSharp.Test
                 var previousDataValue = parser.GetPreviousValue(changedIndex);
                 var dataValue = parser.GetValue(changedIndex);
 
-                Console.WriteLine(string.Format("  {0}: {1} -> {2}",
-                                  (Usage)dataValue.Usages.FirstOrDefault(), previousDataValue.GetPhysicalValue(), dataValue.GetPhysicalValue()));
+                var now = DateTime.Now;
+                if ((now - _lastHeartbeat).TotalSeconds > 10)
+                {
+                    Console.Write(".");
+                    _lastHeartbeat = now;
+                }
+
+                if ((Usage)dataValue.Usages.FirstOrDefault() != Usage.GenericDesktopX)
+                    continue;
+
+                //Console.WriteLine(string.Format("  {0}: {1} -> {2}",
+                //                  (Usage)dataValue.Usages.FirstOrDefault(), previousDataValue.GetPhysicalValue(), dataValue.GetPhysicalValue()));
+
+                
+                var secondsElapsed = (now - _lastAileronChange).TotalSeconds;
+                var state = "";
+
+                if (_lastAileronChange != DateTime.MinValue && secondsElapsed > 0.5)
+                {
+                    state = $"error: {secondsElapsed:0.000} seconds elapsed since last change";
+                    Console.WriteLine();
+                    Console.WriteLine(state);
+                    Console.Beep();
+                }
+
+                _lastAileronChange = now;
+
+                // Log all aileron changes
+                using (StreamWriter sw = File.AppendText("c:\\temp\\rf-rx.log"))
+                {
+                    sw.WriteLine($"{now.TimeOfDay},{dataValue.GetPhysicalValue()},{state}");
+                }
             }
 #else
             if (parser.HasChanged)
@@ -215,7 +250,7 @@ namespace HidSharp.Test
 
             Console.WriteLine("Complete device list (took {0} ms to get {1} devices):",
                               stopwatch.ElapsedMilliseconds, hidDeviceList.Length);
-            foreach (HidDevice dev in hidDeviceList)
+            foreach (HidDevice dev in hidDeviceList.Where(d => d.ProductName.StartsWith("Rotorflight")))
             {
                 Console.WriteLine(dev.DevicePath);
                 //Console.WriteLine(string.Join(",", dev.GetDevicePathHierarchy())); // TODO
@@ -286,7 +321,7 @@ namespace HidSharp.Test
                         }
 
                         {
-                            Console.WriteLine("Opening device for 20 seconds...");
+                            Console.WriteLine($"Opening device for {OPEN_TIME} seconds...");
 
                             HidStream hidStream;
                             if (dev.TryOpen(out hidStream))
@@ -306,7 +341,8 @@ namespace HidSharp.Test
                                     int startTime = Environment.TickCount;
                                     while (true)
                                     {
-                                        if (inputReceiver.WaitHandle.WaitOne(1000))
+                                        //if (inputReceiver.WaitHandle.WaitOne(1000))
+                                        if (inputReceiver.WaitHandle.WaitOne(200))
                                         {
                                             if (!inputReceiver.IsRunning) { break; } // Disconnected?
 
@@ -323,7 +359,7 @@ namespace HidSharp.Test
                                         }
 
                                         uint elapsedTime = (uint)(Environment.TickCount - startTime);
-                                        if (elapsedTime >= 20000) { break; } // Stay open for 20 seconds.
+                                        if (elapsedTime >= OPEN_TIME) { break; } // Stay open for 3 hours.
                                     }
 #elif SINGLE_THREADED_POLLING_APPROACH
                                     inputReceiver.Start(hidStream);
@@ -346,7 +382,7 @@ namespace HidSharp.Test
                                     }
 
                                     uint elapsedTime = (uint)(Environment.TickCount - startTime);
-                                    if (elapsedTime >= 20000) { break; } // Stay open for 20 seconds.
+                                    if (elapsedTime >= OPEN_TIME) { break; } // Stay open for 20 seconds.
 #elif THREAD_POOL_RECEIVED_EVENT_APPROACH
                                     inputReceiver.Received += (sender, e) =>
                                         {
@@ -365,7 +401,7 @@ namespace HidSharp.Test
                                         };
                                     inputReceiver.Start(hidStream);
 
-                                    Thread.Sleep(20000);
+                                    Thread.Sleep(OPEN_TIME);
 #elif RAW_APPROACH
                                     IAsyncResult ar = null;
 
@@ -397,7 +433,7 @@ namespace HidSharp.Test
                                         }
 
                                         uint elapsedTime = (uint)(Environment.TickCount - startTime);
-                                        if (elapsedTime >= 20000) { break; } // Stay open for 20 seconds.
+                                        if (elapsedTime >= OPEN_TIME) { break; } // Stay open for 20 seconds.
                                     }
 #else
 #error "Choose an approach for the example."
