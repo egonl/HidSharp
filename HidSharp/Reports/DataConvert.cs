@@ -70,6 +70,7 @@ namespace HidSharp.Reports
 
         public static bool IsLogicalOutOfRange(DataItem item, int logicalValue)
         {
+            return false; // HACK
             Throw.If.Null(item);
             return item.IsLogicalSigned
                 ? (logicalValue < item.LogicalMinimum || logicalValue > item.LogicalMaximum)

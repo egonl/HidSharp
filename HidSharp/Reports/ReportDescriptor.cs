@@ -309,7 +309,8 @@ namespace HidSharp.Reports
 
             EncodedItem logicalMinItem = State.GetGlobalItem(GlobalItemTag.LogicalMinimum);
             EncodedItem logicalMaxItem = State.GetGlobalItem(GlobalItemTag.LogicalMaximum);
-            dataItem.IsLogicalSigned = !dataItem.IsArray && ((logicalMinItem != null ? logicalMinItem.DataValue : 0) > (logicalMaxItem != null ? logicalMaxItem.DataValue : 0));
+            dataItem.IsLogicalSigned = logicalMaxItem?.DataValue == 127 ? true : 
+                !dataItem.IsArray && ((logicalMinItem != null ? logicalMinItem.DataValue : 0) > (logicalMaxItem != null ? logicalMaxItem.DataValue : 0));
             int logicalMinimum = logicalMinItem == null ? 0 : dataItem.IsLogicalSigned ? logicalMinItem.DataValueSigned : (int)logicalMinItem.DataValue;
             int logicalMaximum = logicalMaxItem == null ? 0 : dataItem.IsLogicalSigned ? logicalMaxItem.DataValueSigned : (int)logicalMaxItem.DataValue;
 
